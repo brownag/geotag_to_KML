@@ -52,7 +52,7 @@ make_kmz <- TRUE #Requires WinZip. Creates a standalone file containing KML and 
 
 if(name_by_nearby_point)
   dp_points <- readOGR(dsn = 'L:/CA630/FG_CA630_OFFICIAL.gdb', layer = 'ca630_dp', stringsAsFactors=FALSE) 
-  #path to feature class containing existing site points for labeling clusters
+  #path to feature class containing existing site points for labeagbtrling clusters
 
 ###
 ###########
@@ -79,14 +79,17 @@ getNumericElevation = function(s) {
   return(as.numeric(ff[2]))
 }
 
-makePhotoStringByCentroid=function(x) {
+makePhotoStringByCentroid=function(x,usecdata=TRUE) {
   #takes vector of file names and creates CDATA string for export
-  imagez <- paste0("<img src=\"",x,"\" />")
-  buf <- "<![CDATA["
+  imagez <- paste0("<img src=\"./",x,"\" />")
+  buf=""
+  if(usecdata)
+    buf <- "<![CDATA["
   for(i in imagez) {
     buf <- paste0(buf,i,"<br />")
   }
-  buf <- paste0(buf,"]]>")
+  if(usecdata)
+    buf <- paste0(buf,"]]>")
   return(buf)
 }
 
@@ -95,8 +98,10 @@ makePlacemarkByCentroid = function(x,n) {
   #x is the data, n is a unique id to use for the name field (probably an integer unless otherwise specified)
   datetime <- x$date[1]
   photostring <- makePhotoStringByCentroid(x$filename)
+  buf <- ""
   buf <- paste0("\t\t\t<Placemark>\n\t\t\t\t",paste0("<name>",n,"</name>\n\t\t\t\t"))
   buf <- paste0(buf,"<TimeStamp><when>",datetime,"</when></TimeStamp>\n\t\t\t\t")
+  buf <- paste0(buf,"<description>",makePhotoStringByCentroid(x$filename,usecdata=TRUE),"</description>\n\t\t\t\t")
   buf <- paste0(buf,"<ExtendedData><SchemaData schemaUrl=\"#schema0\"><SimpleData name=\"pdfmaps_photos\">",photostring,"</SimpleData></SchemaData></ExtendedData>\n\t\t\t\t")
   buf <- paste0(buf,"<Point><coordinates>",x$clng[1],",",x$clat[1],",",floor(x$celev[1]),"</coordinates></Point>\n\t\t\t</Placemark>")
   return(buf)
@@ -178,9 +183,9 @@ coordinates(dat2) <- ~clng+clat+celev #elevate this copy to SpatialPointsDataFra
 proj4string(dat2) <- device_projection
 
 ncclust <- levels(factor(dat2$centroid))
+placemark_names <- c()
 
 if(name_by_nearby_point) {
-  placemark_names <- c()
   dp_points_tagged <- 0
   #try to NAME centroids based on DP LAYER POINTS WITHIN THRESHOLD DISTANCE
   dat_dp <- spTransform(dat2,proj4string(dp_points)) # convert to CRS of dp layer
@@ -206,7 +211,7 @@ if(is.na(placemark_names) && placemark_postfix_start > 0) { # if the placemark n
   placemark_names <- paste0(placemark_prefix, placemark_names) #adds the prefix, default is ""
 }
 
-for(j in ncclust) {
+for(j in as.numeric(ncclust)) {
   who <- which(dat2$centroid == j)
   subse <- dat2[who,]
   placemarkz <- paste0(placemarkz,makePlacemarkByCentroid(subse,placemark_names[j]),"\n") #TODO: fail elegantly if there aren't enough names for centroids;
