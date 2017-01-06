@@ -26,7 +26,7 @@ script_dir <- "E:/scripts/geotag_to_KML/"
 image_directory <- paste0(script_dir,"testimages/")
 exiftool_path <- paste0(script_dir,"exiftool(-k).exe")          #this executable is required for extracting EXIF data from JPGs
 winzip_path <- "\"C:\\Program Files (x86)\\WinZip\\wzzip.exe\"" #winzip is used for creating KMZ files
-template_file <- 'AvenzaMaps_kml_template.dat' for u
+template_file <- 'AvenzaMaps_kml_template.dat'
 device_projection <- '+proj=longlat +datum=WGS84'           #projection information for data extracted from EXIF
 
 output_path <- paste0(script_dir,"~sorted") #this is the path to where site folder output will be placed
