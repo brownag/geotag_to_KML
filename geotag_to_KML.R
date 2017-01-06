@@ -22,15 +22,14 @@ if(sum(as.numeric(loaded))!=length(packz)) {
 }
 
 ###SETUP###
-image_directory <- "E:/scripts/geotag_to_KML/testimages/"#"L:/Ecological_Site_Photos/6b_outsideofCA630/Jackson_trip_22A lower lrus" 
 script_dir <- "E:/scripts/geotag_to_KML/"
+image_directory <- paste0(script_dir,"testimages/")
 exiftool_path <- paste0(script_dir,"exiftool(-k).exe")          #this executable is required for extracting EXIF data from JPGs
 winzip_path <- "\"C:\\Program Files (x86)\\WinZip\\wzzip.exe\"" #winzip is used for creating KMZ files
-
+template_file <- 'AvenzaMaps_kml_template.dat' for u
 device_projection <- '+proj=longlat +datum=WGS84'           #projection information for data extracted from EXIF
 
-output_path <- paste0(script_dir,"2016-12-5/~sorted") #this is the path to where site folder output will be placed
-                #"L:\\Ecological_Site_Photos\\6b_outsideofCA630\\Jackson_trip_22A lower lrus\\"
+output_path <- paste0(script_dir,"~sorted") #this is the path to where site folder output will be placed
 if(!dir.exists(output_path))
   dir.create(output_path,showWarnings=FALSE,recursive=TRUE)
 
@@ -98,7 +97,7 @@ makePlacemarkByCentroid = function(x,n) {
 }
 
 makeKML = function(output,placemarks,folder) {
-  fileName <- 'E:/scripts/geotag_to_KML/AvenzaMaps_kml_template.dat'
+  fileName <- paste0(script_dir,template_file) 
   buf <- readChar(fileName, file.info(fileName)$size)
   buf <- sub("%%%FOLDERNAME%%%",folder,buf)
   buf <- sub("%%%PLACEMARKS%%%",placemarks,buf)
@@ -133,7 +132,8 @@ for(g in exiftool_callz) {
     latz <- getDecDegrees(l[["GPS Latitude"]])
     lngz <- getDecDegrees(l[["GPS Longitude"]])
     beaz <- NA
-    try(expr=(beaz<-as.numeric(l[['GPS Img Direction']])),silent = TRUE) #sometimes this fails beause there is no bearing information, so we do not require it
+    try(expr=(beaz<-as.numeric(l[['GPS Img Direction']])),silent = TRUE) 
+    #sometimes this fails beause there is no bearing information, so we do not require it
     imghz <- as.numeric(l[['Image Height']])
     imgwz <- as.numeric(l[['Image Width']])
     dat <- rbind(dat,data.frame(path=pname,filename=fname, date=datz, lat=latz, lng=lngz, elev=elez, bearing=beaz, imgh=imghz, imgw=imgwz))
