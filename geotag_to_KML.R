@@ -43,10 +43,13 @@ placemark_postfix_start <- 53 #default numbering starts from 1. Change to the fi
                              # Sites will be incremented based on the temporal order of the pictures.
 placemark_prefix <- "2016CA63060" #string to precede the site ID number. can be used to make NASIS site IDs. default is ""
 
-name_by_nearby_point <- FALSE #default: FALSE; creates a new site ID for each cluster of photos
+name_by_nearby_point <- TRUE #default: FALSE; creates a new site ID for each cluster of photos
                              # if TRUE allows a separate shapefile of points to be loaded (e.g. exported from GPS, dp layer, NASIS sites etc). 
                                # if one of the points in that feature class falls within the specified threshold then the name of that point will
                              # be used for the corresponding cluster. orherwise it will just get the next available numeric value.
+
+make_kmz <- TRUE #Requires WinZip. Creates a standalone file containing KML and images
+
 if(name_by_nearby_point)
   dp_points <- readOGR(dsn = 'L:/CA630/FG_CA630_OFFICIAL.gdb', layer = 'ca630_dp', stringsAsFactors=FALSE) 
   #path to feature class containing existing site points for labeling clusters
@@ -56,15 +59,18 @@ if(name_by_nearby_point)
 
 ###INTERNAL SETUP###
 centroid_function <- mean                                   # function to use for aggregating x,y,z data from multiple images in a cluster;
-degms_regex <- "([0-9]+) deg ([0-9]+)' ([0-9]+\\.[0-9]+)\"" # pattern for capturing degrees, min and sec for conversion to decimal degrees
+degms_regex <- "([0-9]+) deg ([0-9]+)' ([0-9]+\\.[0-9]+)\" (.)" # pattern for capturing degrees, min and sec for conversion to decimal degrees
 elev_regex <- "([0-9\\.]+) m.*"                             # pattern for capturing elevation numeric value from EXIF string
 ###########
 
 ### FUNCTION DEFINITIONS ###
 getDecDegrees = function(s) {
   ff <- str_match(s,degms_regex)
-  ff <- as.numeric(ff[2:4])
-  return(ff[1] + (ff[2]/60) + (ff[3]/3600))
+  ff1 <- as.numeric(ff[2:4])
+  hemi <- ff[5]
+  if(hemi == "N" || hemi == "E")  sign = 1
+  else    sign = -1
+  return(sign*(ff1[1] + (ff1[2]/60) + (ff1[3]/3600)))
   #Decimal degrees = Degrees + (Minutes/60) + (Seconds/3600)
 }
 
@@ -92,7 +98,7 @@ makePlacemarkByCentroid = function(x,n) {
   buf <- paste0("\t\t\t<Placemark>\n\t\t\t\t",paste0("<name>",n,"</name>\n\t\t\t\t"))
   buf <- paste0(buf,"<TimeStamp><when>",datetime,"</when></TimeStamp>\n\t\t\t\t")
   buf <- paste0(buf,"<ExtendedData><SchemaData schemaUrl=\"#schema0\"><SimpleData name=\"pdfmaps_photos\">",photostring,"</SimpleData></SchemaData></ExtendedData>\n\t\t\t\t")
-  buf <- paste0(buf,"<Point><coordinates>",-x$clng[1],",",x$clat[1],",",floor(x$celev[1]),"</coordinates></Point>\n\t\t\t</Placemark>")
+  buf <- paste0(buf,"<Point><coordinates>",x$clng[1],",",x$clat[1],",",floor(x$celev[1]),"</coordinates></Point>\n\t\t\t</Placemark>")
   return(buf)
 }
 
@@ -163,7 +169,7 @@ dat$celev <- numeric(length(dat$filename))
 for(i in as.numeric(levels(factor(dat$centroid)))) {
   who=which(dat@data$centroid == i)
   dat@data[who,]$clat <- c_lat[i]
-  dat@data[who,]$clng <- -c_lng[i]
+  dat@data[who,]$clng <- c_lng[i]
   dat@data[who,]$celev <- c_elev[i]
 }
 dat@data$filename <- as.character(dat@data$filename)
