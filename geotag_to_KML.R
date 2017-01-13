@@ -208,7 +208,7 @@ if(name_by_nearby_point) {
   for(ddp in 1:length(ncclust)) {
     sdat_dp <- dat_dp[which(dat_dp$centroid == ddp),]
     dpdistz <- spDistsN1(pt=coordinates(sdat_dp)[1,1:2],pts=dp_points) #calculates distances from all centroids to all dp points
-    dpid <- which(dpdistz==min(dpdistz))[1] #if multiple meet the threshold, take the closest
+    dpid <- which(dpdistz==min(dpdistz))[1] #if multiple meet the threshold, take the first (closest)
     print(paste("Cluster",ddp,"is",dpdistz[dpid],"meters from",dp_points[dpid,]$IDENT)) 
     if(dpdistz[dpid] <= threshold) {
       placemark_names <- c(placemark_names,(dp_points[dpid,]$IDENT))
@@ -240,7 +240,12 @@ makeKML(paste0(output_path,"/doc.kml"),placemarkz,foldername)
 if(make_kmz) {
   dir.create(paste0(output_path,"/images"),recursive=TRUE,showWarnings=FALSE)
   for(f in 1:length(filez)) {
-    file.copy(filez[f],paste0(output_path,"\\images\\",dat2$filename[f]))
+    
+    #instead of using system copy, use magick to read in source, resize and write to target directory
+    #file.copy(filez[f],paste0(output_path,"\\images\\",dat2$filename[f]))
+    img <- image_read(filez[f])
+    img_s <- image_scale(img,scaling_factor)
+    image_write(image=img_s,path=paste0(output_path,"\\images\\",dat2$filename[f]))
   }
   system(paste0(winzip_path, " ",output_path,"/",foldername,".kmz \"",output_path,"/*.*\""," \"",output_path,"/images/*.*\""))
 }
@@ -261,60 +266,3 @@ for(p in 1:length(ncclust)) {
     image_write(image=img_s,path=paste0(outdir,"/",subse[s,]$filename))
   }
 }
-
-#########################EXTRAS############################
-### KML output example
-  ## Sample photostring for two images
-  #<![CDATA[<img src="image0.jpg" /><br /><img src="image1.jpg" /><br />]]>
-  
-  ## Sample placemark 
-  # <Placemark>
-  #   <name>%%%SITEID%%%</name>
-  #   <TimeStamp>
-  #     <when>%%%DATETIME%%%</when>
-  #   </TimeStamp>
-  #   <ExtendedData>
-  #     <SchemaData schemaUrl="#schema0">
-  #       <SimpleData name="pdfmaps_photos">%%%PHOTOSTRING%%%</SimpleData>
-  #     </SchemaData>
-  #   </ExtendedData>
-  #   <Point>
-  #     <coordinates>
-  #     %%%LONGITUDE%%%,%%%LATITUDE%%%,%%%ALTITUDE%%%
-  #     </coordinates>
-  #   </Point>
-  # </Placemark>
-  
-  ## Sample KML file in AvenzaMaps_kml_template.dat
-
-### END ###
-
-
-##### --- Old stuff
-### export collection of SpatialPhotoOverlay objects to a single KML/KMZ
-# create dummy "EXIF" data as a named list, using the cluster values rather than individual
-# d1=dat@data[1,]
-# dexif=list()
-# dexif[['GPSLatitude']] = d1$clat
-# dexif[['GPSLongitude']] = d1$clng
-# dexif[['GPSAltitude']] = d1$celev
-# dexif[['DateTime']] = d1$date
-# dexif[['ExposureTime']] = "1/999"
-# dexif[['FocalLength']] = "4.2 mm"
-# dexif[['Flash']] = NA
-
-#actually SPO does not do what we need for use in PDF maps. Could work for Google Earth visualization with some refinements.
-
-# overlay <- as.list(data.frame(rotation=0, leftFov=-180, rightFov=180, bottomFov=-90, 
-#                               topFov=90, near=1, shape="rectangle", range=0, tilt=0, 
-#                               heading=0, roll=0))
-# kml_open("test.kml")  
-# nombre=paste0("file:///",dat$filename[1])
-# z=RCurl::getURI(nombre, .opts=RCurl::curlOptions(header=TRUE, nobody=TRUE, transfertext=TRUE, failonerror=FALSE, ssl.verifypeer = FALSE))
-# bbox=c(0,0,3/36000*d1$imgw,3/36000*d1$imgh)
-# bands=rep(rep(1, d1$imgh*d1$imgw), 3)
-# pmap=pixmapRGB(bands, d1$imgh, d1$imgw, bbox = bbox)
-# spo=new("SpatialPhotoOverlay", filename = nombre, pixmap = pmap, exif.info = dexif, PhotoOverlay=overlay, sp = dat2[1,])
-# kml_layer(spo, method="PhotoOverlay")
-# kml_close("test.kml")
-
