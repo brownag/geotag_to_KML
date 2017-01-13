@@ -1,23 +1,11 @@
 #Photo geotag to KML script
 #@author: andrew brown
-#@version: 0.1b; 12/1/16
-#@description: extracts geotag/EXIF data from images in a user-specified directory.
-###            clusters pictures/coordinates that fall within a defined threshold (default 50m)
-###            creates a KML file that can be imported into AvenzaMaps with average cluster coordinates and 
-###            the corresponding photos. Note that mapping between file names of pictures and their 
-###            corresponding file names on the phone are necessary in order to display them through 
-###            PDFMAPs interface.
+#@version: 0.2b; 1/13/17
 
-#TODO: on-the-fly resizing for KMZ embedded images https://cran.r-project.org/web/packages/magick/vignettes/intro.html
-
-### install required packages if needed
-
+### install & load required packages, if needed
 packz <- c("sp","rgdal","stringr","pixmap","RCurl","utils","magick")
 newpackz <- packz[!(packz %in% installed.packages()[,"Package"])]
-if(length(newpackz)) 
-  install.packages(newpackz)
-
-### load packages
+if(length(newpackz)) install.packages(newpackz)
 loaded <- lapply(packz,FUN=require,character.only=TRUE)
 if(sum(as.numeric(loaded))!=length(packz)) {
   stop("Failed to load one or more required packages!")
@@ -25,32 +13,31 @@ if(sum(as.numeric(loaded))!=length(packz)) {
 }
 
 ###SETUP###
-#User-defined parameters
-threshold <- 50      #meters; maximum euclidean distance between points for cluster membership and cluster naming from DP layer
+#User-defined settings
+threshold <- 50               #meters; maximum distance between points for cluster membership and cluster naming from DP layer
 
-make_kmz <- TRUE #Requires WinZip. Creates a standalone file containing KML and images
+make_kmz <- TRUE              #requires WinZip. Creates a standalone file containing KML and images
 
-scaling_factor <- "5%" #string supplied to magick::image_scale() for adjusting images output
+scaling_factor <- "25%"       #string supplied to magick::image_scale() for adjusting image output
 
-name_by_nearby_point <- TRUE #default: FALSE which creates a new site ID for each cluster of photos
-                             # if TRUE allows a separate shapefile of points to be loaded (e.g. exported from GPS, dp layer, NASIS sites etc). 
-                             # if one of the points in that feature class falls within the specified threshold then the name of that point will
-                             # be used for the corresponding cluster. orherwise it will just get the next available numeric value.
+name_by_nearby_point <- TRUE  #default: FALSE; creates a new site ID for each cluster of photos
+                              # if TRUE allows a separate shapefile of points to be loaded (e.g. exported from GPS, dp layer, NASIS sites etc). 
+                              # if one of the points in that feature class falls within the specified threshold then the name of that point will
+                              # be used for the corresponding cluster. orherwise it will just get the next available numeric value.
 
-placemark_names <- NA #default is NA; alternately can specify a vector containing pre-defined site IDs. 
-                     # if this is specified, no other naming scheme will be used. 
-                     # Need to know a priori the number of clusters, and give a name for each, otherwise an error will occur.
-
+placemark_names <- NA         #default is NA; uses either numeric or nearby point names. Need to know a priori the number of clusters.
+                              # alternately can specify a vector containing pre-defined site IDs. if this is non-NA, no other naming scheme will be used. 
+                            
 placemark_postfix_start <- 53 #default numbering starts from 1. Change to the first site ID number used for this picture set. 
-                             # Sites will be incremented based on the temporal order of the pictures.
+                              # Sites will be incremented based on the temporal order of the pictures.
 
-placemark_prefix <- "2016CA63060" #string to precede the site ID number. can be used to make NASIS site IDs. default is ""
+placemark_prefix <- "2016CA63060" #default: ""; string to precede the site ID number. can be used to make e.g. NASIS user site IDs. 
 
-poly_source = 'L:/CA630/FG_CA630_OFFICIAL.gdb' #path to feature class containing existing site points for labeling clusters
+point_source = 'L:/CA630/FG_CA630_OFFICIAL.gdb' #path to feature class containing existing site points for labeling clusters
 
-poly_layer = 'ca630_dp' #what layer to use within geodatabase. supplied to rgdal::readOGR()
+point_layer = 'ca630_dp' #what layer to use within geodatabase. supplied to rgdal::readOGR()
 
-centroid_function <- mean                                   # function to use for aggregating x,y,z data from multiple images in a cluster;
+centroid_function <- mean     #default: mean; function to use for aggregating x,y,z data from multiple images in a cluster;
 
 script_dir <- "E:/scripts/geotag_to_KML/"    #path to script directory (e.g. git repository instance)
 
@@ -69,7 +56,7 @@ exiftool_path <- paste0(script_dir,"exiftool(-k).exe")          #this executable
 winzip_path <- "\"C:\\Program Files (x86)\\WinZip\\wzzip.exe\"" #winzip is used for creating KMZ files
 
 if(name_by_nearby_point)
-  dp_points <- readOGR(dsn = poly_source, layer = poly_layer, stringsAsFactors=FALSE) 
+  dp_points <- readOGR(dsn = point_source, layer = point_layer, stringsAsFactors=FALSE) 
 if(!dir.exists(output_path))
   dir.create(output_path,showWarnings=FALSE,recursive=TRUE)
 ###########
@@ -172,7 +159,8 @@ coordinates(dat) <- ~lng+lat
 proj4string(dat) <- device_projection
 
 # cluster coordinates using threshold
-distz <- spDists(dat,longlat=TRUE)*1000 #gives distance between points in meters (KM*1000); may generate warning due to issues with different projections and calculation of distance
+distz <- spDists(dat,longlat=TRUE)*1000 #gives distance between points in meters (KM*1000); 
+#      may generate warning due to issues with different projections and calculation of distance
 hr <- hclust(dist(distz), method = "complete", members=NULL)
 #plot(hr) #debug: check tree visually
 dat$centroid <- cutree(hr, h=threshold)#cut the tree at distance threshold to define clusters
@@ -194,8 +182,9 @@ for(i in as.numeric(levels(factor(dat$centroid)))) {
   dat@data[who,]$celev <- c_elev[i]
 }
 dat@data$filename <- as.character(dat@data$filename)
-dat2=dat@data #make a copy of the data we have updated
-coordinates(dat2) <- ~clng+clat+celev #elevate this copy to SpatialPointsDataFrame this time using the centroid values for points rather than data from individual images. each record still retains individual location as well as centroid.
+dat2=dat@data                         #make a copy of the data we have updated
+coordinates(dat2) <- ~clng+clat+celev #elevate the copy to SpatialPointsDataFrame, this time using the centroid values for points. 
+                                      #each record still retains individual locations.
 proj4string(dat2) <- device_projection
 
 ncclust <- levels(factor(dat2$centroid))
@@ -240,7 +229,6 @@ makeKML(paste0(output_path,"/doc.kml"),placemarkz,foldername)
 if(make_kmz) {
   dir.create(paste0(output_path,"/images"),recursive=TRUE,showWarnings=FALSE)
   for(f in 1:length(filez)) {
-    
     #instead of using system copy, use magick to read in source, resize and write to target directory
     #file.copy(filez[f],paste0(output_path,"\\images\\",dat2$filename[f]))
     img <- image_read(filez[f])
@@ -258,9 +246,8 @@ for(p in 1:length(ncclust)) {
   who <- which(dat2$centroid == p)
   subse <- dat2[who,]
   for(s in 1:length(subse)) {
-    #file.copy(paste0(subse[s,]$path),paste0(outdir,"/",subse[s,]$filename))
-    
     #instead of using system copy, use magick to read in source, resize and write to target directory
+    #file.copy(paste0(subse[s,]$path),paste0(outdir,"/",subse[s,]$filename))
     img <- image_read(paste0(subse[s,]$path))
     img_s <- image_scale(img,scaling_factor)
     image_write(image=img_s,path=paste0(outdir,"/",subse[s,]$filename))
