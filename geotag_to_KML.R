@@ -8,8 +8,11 @@
 ###            corresponding file names on the phone are necessary in order to display them through 
 ###            PDFMAPs interface.
 
+#TODO: on-the-fly resizing for KMZ embedded images https://cran.r-project.org/web/packages/magick/vignettes/intro.html
+
 ### install required packages if needed
-packz <- c("sp","rgdal","stringr","pixmap","RCurl","utils")
+
+packz <- c("sp","rgdal","stringr","pixmap","RCurl","utils","magick")
 newpackz <- packz[!(packz %in% installed.packages()[,"Package"])]
 if(length(newpackz)) 
   install.packages(newpackz)
@@ -22,43 +25,56 @@ if(sum(as.numeric(loaded))!=length(packz)) {
 }
 
 ###SETUP###
-script_dir <- "E:/scripts/geotag_to_KML/"
-image_directory <- paste0(script_dir,"testimages/")
-exiftool_path <- paste0(script_dir,"exiftool(-k).exe")          #this executable is required for extracting EXIF data from JPGs
-winzip_path <- "\"C:\\Program Files (x86)\\WinZip\\wzzip.exe\"" #winzip is used for creating KMZ files
-template_file <- 'AvenzaMaps_kml_template.dat'
-device_projection <- '+proj=longlat +datum=WGS84'           #projection information for data extracted from EXIF
-
-output_path <- paste0(script_dir,"~sorted") #this is the path to where site folder output will be placed
-if(!dir.exists(output_path))
-  dir.create(output_path,showWarnings=FALSE,recursive=TRUE)
-
-threshold <- 50      #meters; maximum euclidean distance from centroid for cluster membership
-
-###SITE ID NAMING SCHEME###
-placemark_names <- NA #default is NA; alternately can specify a vector containing pre-defined site IDs. 
-                     # if this is specified, no other naming scheme will be used. 
-                     # Need to know a priori the number of clusters, and give a name for each, otherwise an error will occur.
-placemark_postfix_start <- 53 #default numbering starts from 1. Change to the first site ID number used for this picture set. 
-                             # Sites will be incremented based on the temporal order of the pictures.
-placemark_prefix <- "2016CA63060" #string to precede the site ID number. can be used to make NASIS site IDs. default is ""
-
-name_by_nearby_point <- TRUE #default: FALSE; creates a new site ID for each cluster of photos
-                             # if TRUE allows a separate shapefile of points to be loaded (e.g. exported from GPS, dp layer, NASIS sites etc). 
-                               # if one of the points in that feature class falls within the specified threshold then the name of that point will
-                             # be used for the corresponding cluster. orherwise it will just get the next available numeric value.
+#User-defined parameters
+threshold <- 50      #meters; maximum euclidean distance between points for cluster membership and cluster naming from DP layer
 
 make_kmz <- TRUE #Requires WinZip. Creates a standalone file containing KML and images
 
-if(name_by_nearby_point)
-  dp_points <- readOGR(dsn = 'L:/CA630/FG_CA630_OFFICIAL.gdb', layer = 'ca630_dp', stringsAsFactors=FALSE) 
-  #path to feature class containing existing site points for labeagbtrling clusters
+scaling_factor <- "5%" #string supplied to magick::image_scale() for adjusting images output
 
-###
+name_by_nearby_point <- TRUE #default: FALSE which creates a new site ID for each cluster of photos
+                             # if TRUE allows a separate shapefile of points to be loaded (e.g. exported from GPS, dp layer, NASIS sites etc). 
+                             # if one of the points in that feature class falls within the specified threshold then the name of that point will
+                             # be used for the corresponding cluster. orherwise it will just get the next available numeric value.
+
+placemark_names <- NA #default is NA; alternately can specify a vector containing pre-defined site IDs. 
+                     # if this is specified, no other naming scheme will be used. 
+                     # Need to know a priori the number of clusters, and give a name for each, otherwise an error will occur.
+
+placemark_postfix_start <- 53 #default numbering starts from 1. Change to the first site ID number used for this picture set. 
+                             # Sites will be incremented based on the temporal order of the pictures.
+
+placemark_prefix <- "2016CA63060" #string to precede the site ID number. can be used to make NASIS site IDs. default is ""
+
+poly_source = 'L:/CA630/FG_CA630_OFFICIAL.gdb' #path to feature class containing existing site points for labeling clusters
+
+poly_layer = 'ca630_dp' #what layer to use within geodatabase. supplied to rgdal::readOGR()
+
+centroid_function <- mean                                   # function to use for aggregating x,y,z data from multiple images in a cluster;
+
+script_dir <- "E:/scripts/geotag_to_KML/"    #path to script directory (e.g. git repository instance)
+
+image_directory <- paste0(script_dir,"/testimages/")
+
+output_path <- paste0(script_dir,"~testsorted") #this is the path to KML/KMZ output and "sorted" site folders
+
+#Implementation specific parameters
+template_file <- 'AvenzaMaps_kml_template.dat'
+device_projection <- '+proj=longlat +datum=WGS84'           #projection information for data extracted from EXIF
+
+#Script Paths
+
+#External dependencies
+exiftool_path <- paste0(script_dir,"exiftool(-k).exe")          #this executable is required for extracting EXIF data from JPGs
+winzip_path <- "\"C:\\Program Files (x86)\\WinZip\\wzzip.exe\"" #winzip is used for creating KMZ files
+
+if(name_by_nearby_point)
+  dp_points <- readOGR(dsn = poly_source, layer = poly_layer, stringsAsFactors=FALSE) 
+if(!dir.exists(output_path))
+  dir.create(output_path,showWarnings=FALSE,recursive=TRUE)
 ###########
 
 ###INTERNAL SETUP###
-centroid_function <- mean                                   # function to use for aggregating x,y,z data from multiple images in a cluster;
 degms_regex <- "([0-9]+) deg ([0-9]+)' ([0-9]+\\.[0-9]+)\" (.)" # pattern for capturing degrees, min and sec for conversion to decimal degrees
 elev_regex <- "([0-9\\.]+) m.*"                             # pattern for capturing elevation numeric value from EXIF string
 ###########
@@ -68,8 +84,8 @@ getDecDegrees = function(s) {
   ff <- str_match(s,degms_regex)
   ff1 <- as.numeric(ff[2:4])
   hemi <- ff[5]
-  if(hemi == "N" || hemi == "E")  sign = 1
-  else    sign = -1
+  sign=1
+  if(hemi == "S" || hemi == "W")  sign = -1
   return(sign*(ff1[1] + (ff1[2]/60) + (ff1[3]/3600)))
   #Decimal degrees = Degrees + (Minutes/60) + (Seconds/3600)
 }
@@ -187,13 +203,13 @@ placemark_names <- c()
 
 if(name_by_nearby_point) {
   dp_points_tagged <- 0
-  #try to NAME centroids based on DP LAYER POINTS WITHIN THRESHOLD DISTANCE
+  #try to name centroids based on DP layer points within threshold distance
   dat_dp <- spTransform(dat2,proj4string(dp_points)) # convert to CRS of dp layer
   for(ddp in 1:length(ncclust)) {
     sdat_dp <- dat_dp[which(dat_dp$centroid == ddp),]
-    dpdistz <- spDistsN1(pt=coordinates(sdat_dp)[1,1:2],pts=dp_points) 
-    dpid <- which(dpdistz==min(dpdistz))[1]
-    print(paste("Cluster",ddp,"is",dpdistz[dpid],"meters from",dp_points[dpid,]$IDENT))
+    dpdistz <- spDistsN1(pt=coordinates(sdat_dp)[1,1:2],pts=dp_points) #calculates distances from all centroids to all dp points
+    dpid <- which(dpdistz==min(dpdistz))[1] #if multiple meet the threshold, take the closest
+    print(paste("Cluster",ddp,"is",dpdistz[dpid],"meters from",dp_points[dpid,]$IDENT)) 
     if(dpdistz[dpid] <= threshold) {
       placemark_names <- c(placemark_names,(dp_points[dpid,]$IDENT))
       dp_points_tagged <- dp_points_tagged+1
@@ -206,7 +222,8 @@ if(name_by_nearby_point) {
 
 foldername <- Sys.Date()
 placemarkz <- ""
-if(is.na(placemark_names) && placemark_postfix_start > 0) { # if the placemark name list is NA then we will just number them from start to start+number of clusters
+if(is.na(placemark_names) && placemark_postfix_start > 0) { 
+  # if the placemark name list is NA then we will just number them from start to start+number of clusters
   placemark_names <- placemark_postfix_start:(placemark_postfix_start+length(ncclust)) 
   placemark_names <- paste0(placemark_prefix, placemark_names) #adds the prefix, default is ""
 }
@@ -214,11 +231,10 @@ if(is.na(placemark_names) && placemark_postfix_start > 0) { # if the placemark n
 for(j in as.numeric(ncclust)) {
   who <- which(dat2$centroid == j)
   subse <- dat2[who,]
-  placemarkz <- paste0(placemarkz,makePlacemarkByCentroid(subse,placemark_names[j]),"\n") #TODO: fail elegantly if there aren't enough names for centroids;
+  placemarkz <- paste0(placemarkz,makePlacemarkByCentroid(subse,placemark_names[j]),"\n") 
+  #TODO: fail elegantly if there aren't enough names for centroids;
 }
 makeKML(paste0(output_path,"/doc.kml"),placemarkz,foldername)
-
-
 
 #make KMZ file
 if(make_kmz) {
@@ -229,6 +245,7 @@ if(make_kmz) {
   system(paste0(winzip_path, " ",output_path,"/",foldername,".kmz \"",output_path,"/*.*\""," \"",output_path,"/images/*.*\""))
 }
 
+#make a folder for each cluster, named by site id/placemark name
 for(p in 1:length(ncclust)) {
   clust <- ncclust[p]
   outdir <- paste0(output_path,"/",placemark_names[p])
@@ -236,10 +253,14 @@ for(p in 1:length(ncclust)) {
   who <- which(dat2$centroid == p)
   subse <- dat2[who,]
   for(s in 1:length(subse)) {
-    file.copy(paste0(subse[s,]$path),paste0(outdir,"/",subse[s,]$filename))
+    #file.copy(paste0(subse[s,]$path),paste0(outdir,"/",subse[s,]$filename))
+    
+    #instead of using system copy, use magick to read in source, resize and write to target directory
+    img <- image_read(paste0(subse[s,]$path))
+    img_s <- image_scale(img,scaling_factor)
+    image_write(image=img_s,path=paste0(outdir,"/",subse[s,]$filename))
   }
 }
-
 
 #########################EXTRAS############################
 ### KML output example
