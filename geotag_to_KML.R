@@ -46,7 +46,7 @@ image_directory <- paste0(script_dir,"/testimages/")
 output_path <- paste0(script_dir,"~testsorted") #this is the path to KML/KMZ output and "sorted" site folders
 
 #Implementation specific parameters
-template_file <- 'AvenzaMaps_kml_template.dat'
+template_file <- 'kml_template.dat'
 device_projection <- '+proj=longlat +datum=WGS84'           #projection information for data extracted from EXIF
 
 #Script Paths
